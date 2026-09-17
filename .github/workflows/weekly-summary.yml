@@ -1,0 +1,32 @@
+# Posts the weekly prompt-quality summary to Teams.
+#
+# Runs here rather than on a developer's laptop because this repo already holds
+# every developer's checks-*.jsonl file — no pulling, no shared folder, and it
+# does not stop working when one person is on leave.
+#
+# Setup: add a repository secret named TEAMS_WEBHOOK_URL
+# (Settings -> Secrets and variables -> Actions -> New repository secret)
+# with the same webhook URL that is in your local .env.
+
+name: Weekly summary
+
+on:
+  schedule:
+    # 03:30 UTC Monday = 09:00 IST Monday. GitHub cron is always UTC.
+    - cron: '30 3 * * 1'
+  workflow_dispatch: # lets you trigger a run by hand from the Actions tab
+
+jobs:
+  post-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Post summary to Teams
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: node scripts/weekly-summary.js

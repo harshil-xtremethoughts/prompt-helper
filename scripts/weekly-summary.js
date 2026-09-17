@@ -11,6 +11,29 @@ const path = require('path');
 const https = require('https');
 
 const DEFAULT_LOG_DIR = path.join(__dirname, '..', 'data');
+
+// Minimal .env reader so a local run does not need the webhook exported by hand.
+// Real environment variables always win, which is what CI relies on. This reads
+// simple KEY=value lines only; it is not a general dotenv replacement.
+function loadDotEnv() {
+  let raw;
+  try {
+    raw = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8');
+  } catch {
+    return; // No .env file is normal — in CI the secret is injected directly.
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!match) continue; // skips blank lines and # comments
+    const key = match[1];
+    if (process.env[key] !== undefined) continue; // real env wins
+    let value = match[2].trim();
+    const quoted =
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"));
+    process.env[key] = quoted ? value.slice(1, -1) : value;
+  }
+}
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 function loadRecentChecks(logDir) {
@@ -46,6 +69,35 @@ function loadRecentChecks(logDir) {
   return entries;
 }
 
+// Issues are logged as { code, detail }. Counting them by their free-text detail
+// would bucket every entry separately (no two developers phrase an issue the same
+// way), so the tally is keyed on the stable code and only displayed via this map.
+// Codes not listed here — e.g. from a newly added rubric item — fall back to the
+// raw code, which still aggregates correctly.
+const ISSUE_LABELS = {
+  'no-clear-goal': 'No clear goal',
+  'insufficient-context': 'Not enough project context',
+  'no-constraints': 'Constraints not stated',
+  'no-output-format': 'No expected output format',
+  'no-scope-boundaries': 'No scope boundaries',
+  'no-edge-cases': 'Edge cases not mentioned',
+  'no-verification': 'No verification criteria',
+  'contradictions': 'Contradictory instructions',
+  'oversized': 'Several tasks bundled together',
+};
+
+// Entries logged before issue codes existed stored a plain sentence. Keep them
+// countable rather than dropping them from the history.
+function issueCode(issue) {
+  if (issue && typeof issue === 'object') return issue.code || 'unknown';
+  if (typeof issue === 'string' && issue.trim()) return issue.trim();
+  return 'unknown';
+}
+
+function issueLabel(code) {
+  return ISSUE_LABELS[code] || code;
+}
+
 function buildSummary(entries) {
   const total = entries.length;
 
@@ -58,7 +110,8 @@ function buildSummary(entries) {
   const issueCounts = {};
   for (const entry of entries) {
     for (const issue of entry.issues || []) {
-      issueCounts[issue] = (issueCounts[issue] || 0) + 1;
+      const code = issueCode(issue);
+      issueCounts[code] = (issueCounts[code] || 0) + 1;
     }
   }
   let topIssue = null;
@@ -70,7 +123,7 @@ function buildSummary(entries) {
     }
   }
 
-  const issueLine = topIssue ? `"${topIssue}" (seen ${topCount}x)` : 'no issue repeated more than once';
+  const issueLine = topIssue ? `${issueLabel(topIssue)} (seen ${topCount}x)` : 'no issue repeated more than once';
 
   return (
     '**Prompt Helper — Weekly Summary**\n\n' +
@@ -127,6 +180,7 @@ function postToTeams(webhookUrl, text) {
 }
 
 async function main() {
+  loadDotEnv();
   const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
   if (!webhookUrl) {
     console.error('TEAMS_WEBHOOK_URL environment variable is not set.');

@@ -49,6 +49,8 @@ function getProject() {
 }
 
 function syncWithGit(relativeLogFile) {
+  // Escape hatch for trying things out without publishing to the shared repo.
+  if (process.env.PROMPT_HELPER_NO_SYNC === '1') return;
   if (!fs.existsSync(path.join(REPO_ROOT, '.git'))) return;
 
   const opts = { cwd: REPO_ROOT };

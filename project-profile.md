@@ -1,6 +1,18 @@
 # Project Profile
 
-Placeholder — fill this in with real details about your codebase. `/promptcheck` reads this file to judge whether a prompt gives Claude enough project-specific context. The more accurate this is, the more specific the feedback will be.
+`/promptcheck` reads this to judge whether a prompt gives Claude enough
+project-specific context. **It is currently unfilled** — until you replace the
+prompts below with real details, criterion 2 ("sufficient context") can only be
+graded generically.
+
+Two ways to use this file:
+
+- **Shared default** — fill in this copy for the codebase your team works in most.
+- **Per project** — drop a `project-profile.md` in any repo's root and
+  `/promptcheck` uses that one instead when you are working in it. Better if you
+  point this at several codebases.
+
+Keep it short. Half a page that is accurate beats two pages that are stale.
 
 ## Stack
 
@@ -26,3 +38,20 @@ Placeholder — fill this in with real details about your codebase. `/promptchec
 - Recurring mistakes Claude/developers make on this codebase:
 - Files or modules that are easy to break accidentally:
 - Anything unusual about the build/deploy process:
+
+---
+
+## Example of a filled-in section
+
+For calibration — this is the level of detail that makes feedback sharp:
+
+> **Stack:** TypeScript, React 18 + Vite frontend, NestJS backend, pnpm workspaces.
+> Devs routinely forget to mention we use TanStack Query for *all* server state —
+> prompts asking for "add a fetch call" usually get plain `useEffect` back, which
+> we then reject in review.
+>
+> **Must not do without approval:** any change under `prisma/migrations/`, adding a
+> dependency, or editing `.github/workflows/`.
+>
+> **Easy to break:** `src/auth/session.ts` — three services read it and it has no
+> direct test coverage.
