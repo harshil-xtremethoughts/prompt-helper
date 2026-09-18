@@ -73,3 +73,33 @@ If you add a criterion, also add its issue code to `ISSUE_LABELS` in
 [`scripts/weekly-summary.js`](scripts/weekly-summary.js) so the weekly report
 shows a readable name. Unknown codes still aggregate correctly — they just
 display as the raw code.
+
+## Insights
+
+```bash
+node scripts/insights.js
+```
+
+Reads the whole history — every developer, all the way back, not just the last
+7 days — and prints two breakdowns:
+
+1. **Average score by prompt length.** Do longer prompts actually score better?
+2. **Average score by issue code.** Which mistake costs the most?
+
+Both read fields that are already being logged, so there is nothing new to
+collect and the numbers cover your existing history from day one.
+
+Rows backed by fewer than 3 checks are marked `(too few to trust)`, and the
+whole report is flagged as provisional under 20 checks — averages swing wildly
+on small samples and an unlabelled table invites people to over-read it.
+
+Point it at a different log folder to try it out without touching `data/`:
+
+```bash
+node scripts/insights.js /path/to/some/logs
+```
+
+**Read the length table carefully.** Length is a symptom, not a cause: longer
+prompts score better because they carry context and constraints, not because of
+their length. Telling the team to "write longer prompts" will move the length
+column and nothing else.

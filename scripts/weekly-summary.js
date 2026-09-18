@@ -36,7 +36,7 @@ function loadDotEnv() {
 }
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-function loadRecentChecks(logDir) {
+function loadRecentChecks(logDir, windowMs = SEVEN_DAYS_MS) {
   let files;
   try {
     files = fs.readdirSync(logDir).filter((f) => /^checks.*\.jsonl$/.test(f));
@@ -44,7 +44,7 @@ function loadRecentChecks(logDir) {
     return [];
   }
 
-  const cutoff = Date.now() - SEVEN_DAYS_MS;
+  const cutoff = windowMs === Infinity ? 0 : Date.now() - windowMs;
   const entries = [];
   for (const file of files) {
     let raw;
@@ -203,4 +203,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { loadRecentChecks, buildSummary, postToTeams };
+module.exports = { loadRecentChecks, buildSummary, postToTeams, issueCode, issueLabel };
