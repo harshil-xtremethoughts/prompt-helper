@@ -45,6 +45,46 @@ function byLength(entries) {
   });
 }
 
+// ISO 8601 week (Monday-start), e.g. "2026-W08" — stable, sortable, and groups
+// entries the same way regardless of which day of the week a check happened.
+function isoWeekKey(date) {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+function byWeek(entries) {
+  const buckets = new Map();
+  for (const entry of entries) {
+    const score = scoreOf(entry);
+    const timestamp = new Date(entry.timestamp);
+    if (score === null || Number.isNaN(timestamp.getTime())) continue;
+    const key = isoWeekKey(timestamp);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(score);
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)) // chronological, oldest first
+    .map(([week, scores]) => ({ label: week, count: scores.length, avg: average(scores) }));
+}
+
+function byDeveloper(entries) {
+  const buckets = new Map();
+  for (const entry of entries) {
+    const score = scoreOf(entry);
+    if (score === null) continue;
+    const key = entry.developer || 'unknown';
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(score);
+  }
+  return [...buckets.entries()]
+    .map(([developer, scores]) => ({ label: developer, count: scores.length, avg: average(scores) }))
+    .sort((a, b) => a.avg - b.avg); // lowest average first — who could use a hand
+}
+
 function byIssue(entries) {
   const buckets = new Map();
   for (const entry of entries) {
@@ -118,10 +158,17 @@ function main() {
 
   console.log(renderTable('1. Does prompt length track with score?', byLength(entries), 'Prompt length'));
   console.log(renderTable('2. Which mistake costs the most?', byIssue(entries), 'Issue'));
+  console.log(renderTable('3. Is the team improving week over week?', byWeek(entries), 'Week'));
+  console.log(renderTable('4. Average score by developer', byDeveloper(entries), 'Developer'));
 
   console.log('Length is a symptom, not a cause: longer prompts tend to score');
   console.log('better because they carry context and constraints, not because');
   console.log('of their length. Padding a prompt will not raise its score.');
+  console.log('');
+  console.log('The weekly trend can be confounded by rubric.md changing over');
+  console.log('time - a dip may mean the rubric got stricter, not that prompts');
+  console.log('got worse. Each log entry records rubric_version if you need to');
+  console.log('check whether a given week used a different rubric.');
   console.log('');
 }
 
@@ -129,4 +176,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { byLength, byIssue };
+module.exports = { byLength, byIssue, byWeek, byDeveloper, isoWeekKey };

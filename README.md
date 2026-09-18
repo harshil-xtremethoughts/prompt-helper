@@ -32,8 +32,10 @@ node scripts/doctor.js
 
 It checks your Node version, that `git config user.name` is set (the log
 filename is built from it), that you have **push access** to this repo, that the
-command is installed and pointing here, and that the log files are readable.
-Every failing line comes with the command that fixes it.
+command is installed and pointing here, that the log files are readable, and
+(optionally) that `.env` has `TEAMS_WEBHOOK_URL` set if you plan to run
+`weekly-summary.js` locally. Every failing line comes with the command that
+fixes it.
 
 Push access is the one worth checking before you rely on this. The logger is
 silent by design, so without it your checks log locally and never reach the
@@ -124,12 +126,20 @@ node scripts/insights.js
 ```
 
 Reads the whole history — every developer, all the way back, not just the last
-7 days — and prints two breakdowns:
+7 days — and prints four breakdowns:
 
 1. **Average score by prompt length.** Do longer prompts actually score better?
 2. **Average score by issue code.** Which mistake costs the most?
+3. **Average score by ISO week.** Is the team improving over time? Can be
+   confounded by `rubric.md` changing — a dip may mean the rubric got
+   stricter, not that prompts got worse. Each log entry records
+   `rubric_version` (a short hash of `rubric.md`'s content at check time) so
+   you can tell whether a week's dip lines up with a rubric edit.
+4. **Average score by developer.** Worst-average-first — meant to spot who
+   could use a hand, not as a scoreboard. (See also [Team dashboard](#team-dashboard)
+   below for the same idea as an HTML page with per-developer trend lines.)
 
-Both read fields that are already being logged, so there is nothing new to
+All four read fields that are already being logged, so there is nothing new to
 collect and the numbers cover your existing history from day one.
 
 Rows backed by fewer than 3 checks are marked `(too few to trust)`, and the
@@ -167,3 +177,16 @@ git pull && node scripts/dashboard.js
 
 A developer's trend needs at least 4 of their own checks before it means
 anything; until then the card says so rather than showing a number.
+
+## Tests
+
+```bash
+node --test "test/*.test.js"
+```
+
+Covers the pure functions in `weekly-summary.js` and `insights.js` (score
+aggregation, issue bucketing, `.jsonl` parsing, ISO-week grouping) and an
+end-to-end run of `log-check.js` against a scratch log directory. Git sync and
+the Teams POST are not unit tested — exercise those manually, or with
+`doctor.js`. CI runs this plus a syntax check on every push via
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml).

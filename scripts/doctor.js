@@ -29,6 +29,10 @@ function run(cmd) {
     const out = execSync(cmd, {
       cwd: REPO_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
+      // Without this, a push check in a shell with no cached credentials can
+      // try to open an interactive prompt and hang (or, with no TTY at all,
+      // crash) instead of failing fast like every other check here.
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
     });
     return { ok: true, out: out.toString().trim() };
   } catch (err) {
@@ -177,6 +181,22 @@ function checkLogs() {
   );
 }
 
+function checkTeamsWebhook() {
+  const envPath = path.join(REPO_ROOT, '.env');
+  if (!fs.existsSync(envPath)) {
+    record(true, 'Teams webhook (optional)', 'no .env — fine unless you run weekly-summary.js locally', '');
+    return;
+  }
+  const body = fs.readFileSync(envPath, 'utf8');
+  const set = /^\s*TEAMS_WEBHOOK_URL\s*=\s*\S+/m.test(body);
+  record(
+    set,
+    'Teams webhook (optional)',
+    set ? 'TEAMS_WEBHOOK_URL is set' : '.env exists but TEAMS_WEBHOOK_URL is missing or empty',
+    'Copy .env.example to .env and fill in TEAMS_WEBHOOK_URL — only needed to run scripts/weekly-summary.js locally'
+  );
+}
+
 function main() {
   console.log('');
   console.log('Prompt Helper — setup check');
@@ -188,6 +208,7 @@ function main() {
   checkPushAccess(Boolean(remote));
   checkCommandsInstalled();
   checkLogs();
+  checkTeamsWebhook();
 
   const width = Math.max(...results.map((r) => r.label.length));
   for (const r of results) {

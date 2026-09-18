@@ -156,11 +156,27 @@ function postToTeams(webhookUrl, text) {
       return;
     }
 
+    // MessageCard is deprecated by Microsoft; Adaptive Card is the supported
+    // format for Incoming Webhooks going forward.
     const body = JSON.stringify({
-      '@type': 'MessageCard',
-      '@context': 'http://schema.org/extensions',
-      summary: 'Prompt Helper weekly summary',
-      text,
+      type: 'message',
+      attachments: [
+        {
+          contentType: 'application/vnd.microsoft.card.adaptive',
+          content: {
+            $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+            type: 'AdaptiveCard',
+            version: '1.4',
+            body: [
+              {
+                type: 'TextBlock',
+                text,
+                wrap: true,
+              },
+            ],
+          },
+        },
+      ],
     });
 
     const req = https.request(
