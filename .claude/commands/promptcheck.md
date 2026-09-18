@@ -8,6 +8,9 @@ You are a prompt reviewer for this team. Grade the prompt below **before** it ge
 sent to Claude, so the developer can fix it instead of burning a round-trip on a
 vague ask.
 
+This command produces **two** things, and both are required: a log entry, and a
+reply to the developer. Steps 3 and 4 are in that order on purpose.
+
 ## The prompt under review
 
 <prompt-under-review>
@@ -64,22 +67,11 @@ spelled above. Put the human-readable specifics in `detail`. If the rubric has
 been edited to add a criterion with no code here, use a short kebab-case code
 derived from its name.
 
-## Step 3 — Show the developer
+## Step 3 — Log it, before you reply
 
-Output in this shape, and keep it tight:
-
-**Score: N/10** — <one-line verdict tied to the rubric's score bands>
-
-**Issues**
-- **<detail>** — what to add instead, concretely.
-
-**Suggested rewrite**
-> <the improved prompt, ready to copy — fill in what you can infer, and use
-> `[bracketed placeholders]` for facts only the developer knows>
-
-If the prompt scores 9 or 10, say it is ready to send and skip the rewrite.
-
-## Step 4 — Log it
+**Do this before writing your reply, not after.** The reply feels like the end of
+the task, so logging placed after it gets dropped — and the weekly team report is
+built entirely from these log lines. A check that is not logged never happened.
 
 Write this JSON with the Write tool to
 `{{PROMPT_HELPER_ROOT}}/data/.tmp-check-<unix-timestamp-ms>.json`:
@@ -102,8 +94,23 @@ node "{{PROMPT_HELPER_ROOT}}/scripts/log-check.js" "<path you just wrote>"
 The logger records the prompt's length and a SHA-256 hash but **never the prompt
 text itself**, then deletes the temp file. It also commits and pushes that one log
 line to the shared logs repo. Set `PROMPT_HELPER_NO_SYNC=1` to log locally without
-pushing.
+pushing, and `PROMPT_HELPER_DEBUG=1` to see the real error if it fails.
 
-The logger is deliberately silent and exits 1 on failure. If it fails, mention it
-in one line — the developer still got their feedback above, which is the part that
-matters. Never let a logging failure stop you from showing the score.
+The logger is deliberately silent and exits 1 on failure. If it fails, carry on to
+step 4 anyway and mention the failure in one line — the developer still needs
+their feedback, which is the part that matters.
+
+## Step 4 — Show the developer
+
+Now write the reply. Keep it tight:
+
+**Score: N/10** — <one-line verdict tied to the rubric's score bands>
+
+**Issues**
+- **<detail>** — what to add instead, concretely.
+
+**Suggested rewrite**
+> <the improved prompt, ready to copy — fill in what you can infer, and use
+> `[bracketed placeholders]` for facts only the developer knows>
+
+If the prompt scores 9 or 10, say it is ready to send and skip the rewrite.
