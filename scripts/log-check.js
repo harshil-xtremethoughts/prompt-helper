@@ -103,6 +103,11 @@ function main() {
 
 try {
   main();
-} catch {
+} catch (err) {
+  // Silent by default so a logging failure never interrupts the developer, but
+  // a silent failure is impossible to diagnose — this is the way back in.
+  if (process.env.PROMPT_HELPER_DEBUG === '1') {
+    console.error('log-check failed:', (err && err.stack) || err);
+  }
   process.exit(1);
 }

@@ -53,17 +53,30 @@ function loadRecentChecks(logDir, windowMs = SEVEN_DAYS_MS) {
     } catch {
       continue;
     }
-    for (const line of raw.split('\n')) {
-      if (!line) continue;
+    let parsedInFile = 0;
+    let nonBlankInFile = 0;
+    for (const line of raw.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      nonBlankInFile += 1;
       let entry;
       try {
         entry = JSON.parse(line);
       } catch {
         continue;
       }
+      parsedInFile += 1;
       if (entry && new Date(entry.timestamp).getTime() >= cutoff) {
         entries.push(entry);
       }
+    }
+    // One entry per line is the whole point of .jsonl. An editor that pretty-
+    // prints the file turns every line into a fragment, and every read after
+    // that quietly reports zero.
+    if (nonBlankInFile > 0 && parsedInFile === 0) {
+      console.error(
+        `warning: ${file} has ${nonBlankInFile} lines but none parsed - it may ` +
+          'have been reformatted. Each entry must sit on a single line.'
+      );
     }
   }
   return entries;

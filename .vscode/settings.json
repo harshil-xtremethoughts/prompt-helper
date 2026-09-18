@@ -1,0 +1,8 @@
+{
+  "files.associations": {
+    "*.jsonl": "plaintext"
+  },
+  "[plaintext]": {
+    "editor.formatOnSave": false
+  }
+}
