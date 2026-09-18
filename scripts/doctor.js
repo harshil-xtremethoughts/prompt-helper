@@ -87,28 +87,53 @@ function checkPushAccess(hasRemote) {
   );
 }
 
-function checkCommandInstalled() {
-  const target = path.join(os.homedir(), '.claude', 'commands', 'promptcheck.md');
-  if (!fs.existsSync(target)) {
-    record(false, '/promptcheck installed', 'not found', 'node scripts/install-command.js');
-    return;
-  }
+function checkCommandsInstalled() {
+  const sourceDir = path.join(REPO_ROOT, '.claude', 'commands');
+  const targetDir = path.join(os.homedir(), '.claude', 'commands');
+  const fix = 'node scripts/install-command.js';
 
-  const body = fs.readFileSync(target, 'utf8');
-  if (body.includes('{{PROMPT_HELPER_ROOT}}')) {
-    record(false, '/promptcheck installed', 'path placeholder was never filled in',
-      'node scripts/install-command.js');
+  let expected;
+  try {
+    expected = fs.readdirSync(sourceDir).filter((f) => f.endsWith('.md'));
+  } catch {
+    record(false, 'Commands installed', 'no .claude/commands in this checkout', '');
     return;
   }
 
   // An installed copy left behind by an older checkout points somewhere else,
   // so the rubric it reads is not the one in this folder.
-  const expected = REPO_ROOT.split(path.sep).join('/');
+  const thisCheckout = REPO_ROOT.split(path.sep).join('/');
+  const missing = [];
+  const stale = [];
+
+  for (const file of expected) {
+    const target = path.join(targetDir, file);
+    if (!fs.existsSync(target)) {
+      missing.push('/' + file.replace(/\.md$/, ''));
+      continue;
+    }
+    const body = fs.readFileSync(target, 'utf8');
+    // Only commands whose template references the checkout can be checked this
+    // way — one that works purely in the developer's own directory never
+    // mentions a path, and its absence is not staleness.
+    const source = fs.readFileSync(path.join(sourceDir, file), 'utf8');
+    const needsPath = source.includes('{{PROMPT_HELPER_ROOT}}');
+    if (body.includes('{{PROMPT_HELPER_ROOT}}') || (needsPath && !body.includes(thisCheckout))) {
+      stale.push('/' + file.replace(/\.md$/, ''));
+    }
+  }
+
+  const problems = [];
+  if (missing.length) problems.push('not installed: ' + missing.join(', '));
+  if (stale.length) problems.push('pointing elsewhere: ' + stale.join(', '));
+
   record(
-    body.includes(expected),
-    '/promptcheck installed',
-    body.includes(expected) ? 'points at this checkout' : 'points at a different folder',
-    'node scripts/install-command.js'
+    problems.length === 0,
+    'Commands installed',
+    problems.length === 0
+      ? expected.length + ' command(s), pointing at this checkout'
+      : problems.join('; '),
+    fix
   );
 }
 
@@ -161,7 +186,7 @@ function main() {
   checkGitIdentity();
   const remote = checkRemote();
   checkPushAccess(Boolean(remote));
-  checkCommandInstalled();
+  checkCommandsInstalled();
   checkLogs();
 
   const width = Math.max(...results.map((r) => r.label.length));
