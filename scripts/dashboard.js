@@ -11,6 +11,15 @@ const path = require('path');
 const { loadRecentChecks, issueCode, issueLabel } = require('./weekly-summary.js');
 const { byIssue } = require('./insights.js');
 
+// Mirrors rubric.md's score bands so the distribution chart uses the same
+// language as the check replies developers already read.
+const SCORE_BANDS = [
+  { label: '0-2 — must rewrite', min: 0, max: 3, color: 'var(--bad)' },
+  { label: '3-5 — vague', min: 3, max: 6, color: '#D6A319' },
+  { label: '6-8 — usable', min: 6, max: 9, color: 'var(--accent)' },
+  { label: '9-10 — ready to send', min: 9, max: 11, color: 'var(--good)' },
+];
+
 // Below this, a per-developer trend is noise rather than a signal.
 const MIN_FOR_TREND = 4;
 const MIN_MEANINGFUL = 20;
@@ -190,6 +199,36 @@ function renderHistoryData(devs) {
   );
 }
 
+// Horizontal stacked-bar-per-row chart of how many checks fall in each of
+// rubric.md's four score bands — answers "are we mostly sending good prompts
+// or mostly bad ones?" at a glance, which the per-developer averages can't.
+function renderDistribution(entries) {
+  const scores = entries.map(scoreOf).filter((s) => s !== null);
+  if (!scores.length) return '  <p class="meta">Nothing logged yet.</p>';
+
+  const counts = SCORE_BANDS.map(
+    (band) => scores.filter((s) => s >= band.min && s < band.max).length
+  );
+  const maxCount = Math.max(...counts, 1);
+
+  return SCORE_BANDS.map((band, i) => {
+    const count = counts[i];
+    const pct = Math.round((count / maxCount) * 100);
+    const share = Math.round((count / scores.length) * 100);
+    return [
+      '    <div class="dist-row">',
+      '      <div class="dist-label">' + escapeHtml(band.label) + '</div>',
+      '      <div class="bar-track"><div class="bar-fill" style="width:' +
+        pct +
+        '%;background:' +
+        band.color +
+        '"></div></div>',
+      '      <div class="dist-count">' + count + ' (' + share + '%)</div>',
+      '    </div>',
+    ].join('\n');
+  }).join('\n');
+}
+
 function renderIssueRows(entries) {
   const rows = byIssue(entries);
   if (!rows.length) return '        <tr><td colspan="3">Nothing logged yet.</td></tr>';
@@ -229,13 +268,6 @@ const STYLE = [
   '  h3 { font-size:18px; font-weight:600; margin:0 0 12px; }',
   '  .sub { color:var(--muted); margin:0 0 24px; font-size:16px; }',
   '  .warn { color:var(--bad); font-size:14px; margin:12px 0 0; }',
-  '  .filters { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }',
-  '  .filter-group { display:flex; gap:8px; flex-wrap:wrap; }',
-  '  .filter-btn { padding:8px 14px; border:1px solid var(--line); background:var(--card);',
-  '    color:var(--ink); border-radius:6px; cursor:pointer; font-size:14px; transition:all 0.2s;',
-  '    font-weight:500; }',
-  '  .filter-btn:hover { border-color:var(--accent); color:var(--accent); }',
-  '  .filter-btn.active { background:var(--accent); color:white; border-color:var(--accent); }',
   '  .totals { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px;',
   '    margin-bottom:32px; }',
   '  .stat-card { background:var(--card); border:1px solid var(--line); border-radius:12px;',
@@ -276,6 +308,17 @@ const STYLE = [
   '  .bar-label { font-weight:500; margin-bottom:6px; }',
   '  .bar-track { width:100%; height:6px; background:var(--line); border-radius:3px; overflow:hidden; }',
   '  .bar-fill { height:100%; background:var(--accent); border-radius:3px; }',
+  '  .dist-row { display:grid; grid-template-columns:180px 1fr 90px; align-items:center; gap:16px;',
+  '    padding:8px 0; }',
+  '  .dist-label { font-size:14px; font-weight:500; }',
+  '  .dist-count { font-size:14px; color:var(--muted); text-align:right;',
+  '    font-variant-numeric:tabular-nums; }',
+  '  .dist-row .bar-track { height:14px; border-radius:7px; }',
+  '  .dist-row .bar-fill { border-radius:7px; }',
+  '  @media (max-width:600px) {',
+  '    .dist-row { grid-template-columns:110px 1fr 70px; gap:8px; }',
+  '    .dist-label { font-size:12px; }',
+  '  }',
   '  .modal { display:none; position:fixed; top:0; left:0; right:0; bottom:0;',
   '    background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; }',
   '  .modal.show { display:flex; }',
@@ -294,8 +337,6 @@ const STYLE = [
   '    .grid { grid-template-columns:1fr; }',
   '    .card { padding:16px; }',
   '    .score { font-size:40px; }',
-  '    .filters { flex-direction:column; }',
-  '    .filter-btn { width:100%; }',
   '  }',
 ].join('\n');
 
@@ -345,28 +386,12 @@ function renderHtml(entries, options = {}) {
       '</p></div>',
     '  </div>',
     '',
+    '  <h2>Score distribution</h2>',
+    '  <div class="chart-container">',
+    renderDistribution(entries),
+    '  </div>',
+    '',
     '  <h2>Per developer</h2>',
-    devs.length > 1
-      ? [
-          '  <div class="filters">',
-          '    <div class="filter-group" id="dev-filters">',
-          '      <button class="filter-btn active" data-filter="all" onclick="filterDevs(\'all\')">All</button>',
-          devs
-            .map(
-              (d) =>
-                '      <button class="filter-btn" data-filter="' +
-                escapeHtml(d.name) +
-                '" onclick="filterDevs(\'' +
-                escapeHtml(d.name).replace(/'/g, "\\'") +
-                '\')">' +
-                escapeHtml(d.name) +
-                '</button>'
-            )
-            .join('\n'),
-          '    </div>',
-          '  </div>',
-        ].join('\n')
-      : '',
     '  <div class="grid" id="dev-grid">',
     devs.map((d, i) => renderDeveloperCard(d, i)).join('\n'),
     '  </div>',
@@ -396,15 +421,6 @@ function renderHtml(entries, options = {}) {
     '',
     '<script>',
     'var HISTORY_DATA = ' + renderHistoryData(devs) + ';',
-    'function filterDevs(name) {',
-    '  document.querySelectorAll("#dev-filters .filter-btn").forEach(function(b) {',
-    '    b.classList.toggle("active", b.getAttribute("data-filter") === name);',
-    '  });',
-    '  document.querySelectorAll("#dev-grid .card").forEach(function(c) {',
-    '    var match = name === "all" || c.getAttribute("data-dev-name") === name;',
-    '    c.style.display = match ? "" : "none";',
-    '  });',
-    '}',
     'function openHistory(index) {',
     '  var dev = HISTORY_DATA[index];',
     '  if (!dev) return;',
