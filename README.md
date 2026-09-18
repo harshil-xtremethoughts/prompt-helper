@@ -54,6 +54,27 @@ In any project, paste the prompt you were about to send:
 You get a score, the specific gaps, and a rewrite you can copy. The check is
 logged automatically.
 
+## Profiling a repo
+
+```
+/profileinit
+```
+
+Run it inside any repo and it writes a `project-profile.md` there, by reading
+the manifest, `CLAUDE.md`, the folder layout, the lint config and recent commit
+history. `/promptcheck` prefers the profile of whichever repo you are working
+in, so each codebase can carry its own.
+
+This matters more than it looks: without a profile, `/promptcheck` can only give
+generic advice on the "sufficient context" criterion. Writing one by hand is the
+step everyone skips, which is why this exists.
+
+It marks anything it could not verify as `[unknown — fill this in]` rather than
+guessing, and ends by listing what you should confirm. A confidently wrong
+profile is worse than no profile.
+
+Takes effect immediately — no reinstall, no restart.
+
 ## What gets logged
 
 One line per check, appended to your own `data/checks-<you>-<machine>.jsonl`:
