@@ -190,3 +190,29 @@ end-to-end run of `log-check.js` against a scratch log directory. Git sync and
 the Teams POST are not unit tested — exercise those manually, or with
 `doctor.js`. CI runs this plus a syntax check on every push via
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+## Live dashboard
+
+```bash
+node scripts/serve.js
+```
+
+Serves the same dashboard at `http://localhost:4000`, but re-reads the logs on
+every request — reload and you see the current numbers. The page also refreshes
+itself every 30 seconds, so it can be left open on a second screen.
+
+`dashboard.js` writes a file with its data baked in, which is what you want for
+something to send someone. `serve.js` is what you want while checks are actively
+being logged.
+
+Pull everyone else's checks before each render:
+
+```bash
+node scripts/serve.js --pull
+```
+
+Pass a port if 4000 is taken:
+
+```bash
+node scripts/serve.js 4001
+```

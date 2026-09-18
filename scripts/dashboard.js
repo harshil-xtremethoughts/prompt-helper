@@ -178,7 +178,10 @@ const STYLE = [
   '  footer { margin-top:48px; color:var(--muted); font-size:13px; }',
 ].join('\n');
 
-function renderHtml(entries) {
+// options.autoRefreshSeconds is only used when the page is served live, where a
+// reload re-reads the logs. The written-to-disk file has its data baked in, so
+// reloading it would just redraw the same numbers.
+function renderHtml(entries, options = {}) {
   const devs = perDeveloper(entries);
   const scores = entries.map(scoreOf).filter((s) => s !== null);
   const teamAvg = average(scores);
@@ -195,6 +198,9 @@ function renderHtml(entries) {
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    options.autoRefreshSeconds
+      ? '<meta http-equiv="refresh" content="' + Number(options.autoRefreshSeconds) + '">'
+      : '',
     '<title>Prompt Helper — team dashboard</title>',
     '<style>',
     STYLE,
