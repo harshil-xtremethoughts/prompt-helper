@@ -10,16 +10,38 @@ No dependencies. Node 18+ and built-in modules only.
 ## Setup (once per developer)
 
 ```bash
-node scripts/install-command.js
+git clone https://github.com/harshil-xtremethoughts/prompt-helper.git
+```
+
+```bash
+cd prompt-helper && node scripts/install-command.js
 ```
 
 That installs `/promptcheck` into `~/.claude/commands/` with this checkout's path
 baked in, so the command works from **any** project — not just from inside this
-repo. Restart Claude Code afterwards. Re-run it if you move this folder or pull a
-change to the command.
+repo. **Restart Claude Code afterwards.** Re-run it if you move this folder or
+pull a change to the command.
 
-Then fill in [`project-profile.md`](project-profile.md) with your real stack and
-conventions. Skipping this still works, but context feedback stays generic.
+There is nothing to install: Node 18+ and no dependencies.
+
+Then confirm the whole chain actually works:
+
+```bash
+node scripts/doctor.js
+```
+
+It checks your Node version, that `git config user.name` is set (the log
+filename is built from it), that you have **push access** to this repo, that the
+command is installed and pointing here, and that the log files are readable.
+Every failing line comes with the command that fixes it.
+
+Push access is the one worth checking before you rely on this. The logger is
+silent by design, so without it your checks log locally and never reach the
+team — and nothing tells you.
+
+Optionally fill in [`project-profile.md`](project-profile.md) with your stack and
+conventions, or drop one in whichever repo you work in. Skipping it still works;
+context feedback just stays generic.
 
 ## Use
 
