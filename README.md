@@ -103,3 +103,24 @@ node scripts/insights.js /path/to/some/logs
 prompts score better because they carry context and constraints, not because of
 their length. Telling the team to "write longer prompts" will move the length
 column and nothing else.
+
+## Team dashboard
+
+```bash
+node scripts/dashboard.js
+```
+
+Writes `dashboard.html` next to the README — a self-contained page with a card
+per developer (their average, their trend, their most common gap), the team
+totals, and the issue breakdown. No dependencies and no CDN, so it opens
+straight from disk and survives being emailed to someone.
+
+It is generated, so it is gitignored. Run `git pull` first to pick up everyone
+else's checks, then regenerate:
+
+```bash
+git pull && node scripts/dashboard.js
+```
+
+A developer's trend needs at least 4 of their own checks before it means
+anything; until then the card says so rather than showing a number.
