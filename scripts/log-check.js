@@ -14,7 +14,9 @@ const os = require('os');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
-const REPO_ROOT = path.join(__dirname, '..');
+// Overridable so the git sync can be exercised against a throwaway repo in
+// tests. Production never sets it.
+const REPO_ROOT = process.env.PROMPT_HELPER_REPO_ROOT || path.join(__dirname, '..');
 // Override for tests/dry-runs so they never touch a real developer's log file
 // or trigger a real git sync. Real usage always uses the default.
 const LOG_DIR = process.env.PROMPT_HELPER_LOG_DIR || path.join(REPO_ROOT, 'data');
@@ -87,7 +89,11 @@ function syncWithGit(relativeLogFile, commitMessage) {
 
   const opts = { cwd: REPO_ROOT };
   run(['add', relativeLogFile], opts);
-  run(['commit', '-m', commitMessage], opts);
+  // Pathspec, not a bare commit: `git commit` without one commits everything
+  // already in the index, so a developer who had staged their own work would
+  // find it swept into a commit titled "log check". With the path it commits
+  // only this file and leaves their staging area exactly as it was.
+  run(['commit', '-m', commitMessage, '--', relativeLogFile], opts);
   run(['pull', '--rebase', '--autostash'], opts);
 
   // A rebase can fail on diverged history (autostash does not save us from a
