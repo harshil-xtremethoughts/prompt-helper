@@ -78,104 +78,225 @@ function perDeveloper(entries) {
         }
       }
 
+      const lastCheck = rows.length ? rows[rows.length - 1].timestamp : null;
+
       return {
         name,
         checks: rows.length,
         avg: average(scores),
         trend,
+        scores,
+        lastCheck,
         topIssue: topIssue ? issueLabel(topIssue) : null,
         projects: [...new Set(rows.map((r) => r.project).filter(Boolean))],
+        history: rows
+          .slice()
+          .reverse()
+          .map((r) => ({
+            timestamp: r.timestamp,
+            score: scoreOf(r),
+            project: r.project,
+            issues: (r.issues || []).map((i) => issueLabel(issueCode(i))),
+          })),
       };
     })
     .sort((a, b) => (b.avg || 0) - (a.avg || 0));
 }
 
 function trendBadge(trend) {
-  if (trend === null) return '<span class="badge flat">not enough checks yet</span>';
-  if (trend > 0.3) return '<span class="badge up">improving +' + trend.toFixed(1) + '</span>';
-  if (trend < -0.3) return '<span class="badge down">slipping ' + trend.toFixed(1) + '</span>';
-  return '<span class="badge flat">holding steady</span>';
+  if (trend === null) return '<span class="badge flat"><span class="trend-icon">&middot;</span>not enough checks yet</span>';
+  if (trend > 0.3) return '<span class="badge up"><span class="trend-icon">&uarr;</span>improving +' + trend.toFixed(1) + '</span>';
+  if (trend < -0.3) return '<span class="badge down"><span class="trend-icon">&darr;</span>slipping ' + trend.toFixed(1) + '</span>';
+  return '<span class="badge flat"><span class="trend-icon">&rarr;</span>holding steady</span>';
 }
 
-function renderDeveloperCard(dev) {
+function relativeDate(iso) {
+  if (!iso) return 'never';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return days + ' days ago';
+  if (days < 30) return Math.floor(days / 7) + 'w ago';
+  return Math.floor(days / 30) + 'mo ago';
+}
+
+// A tiny inline sparkline needs no chart library — just a polyline scaled into
+// a fixed viewBox. Single-point histories are skipped since a line needs two.
+function renderSparkline(scores) {
+  if (scores.length < 2) return '';
+  const w = 240;
+  const h = 40;
+  const max = 10;
+  const min = 0;
+  const step = w / (scores.length - 1);
+  const points = scores
+    .map((s, i) => {
+      const x = (i * step).toFixed(1);
+      const y = (h - ((s - min) / (max - min)) * h).toFixed(1);
+      return x + ',' + y;
+    })
+    .join(' ');
+  const last = scores[scores.length - 1];
+  const first = scores[0];
+  const color = last > first ? 'var(--good)' : last < first ? 'var(--bad)' : 'var(--muted)';
+  return (
+    '<svg class="sparkline" viewBox="0 0 ' +
+    w +
+    ' ' +
+    h +
+    '" preserveAspectRatio="none"><polyline points="' +
+    points +
+    '" fill="none" stroke="' +
+    color +
+    '" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>'
+  );
+}
+
+function renderDeveloperCard(dev, index) {
   const avg = dev.avg === null ? '&mdash;' : dev.avg.toFixed(1);
-  const issue = dev.topIssue
-    ? '<p class="meta">Most common gap: <strong>' + escapeHtml(shorten(dev.topIssue)) + '</strong></p>'
-    : '<p class="meta">No issues recorded</p>';
-  const where = dev.projects.length
-    ? '<p class="meta">' + escapeHtml(dev.projects.slice(0, 3).join(', ')) + '</p>'
+  const issueTag = dev.topIssue
+    ? '<span class="tag gap-tag">' + escapeHtml(shorten(dev.topIssue)) + '</span>'
     : '';
+  const projectTags = dev.projects
+    .slice(0, 3)
+    .map((p) => '<span class="tag">' + escapeHtml(p) + '</span>')
+    .join('');
+  const extraProjects = dev.projects.length > 3 ? dev.projects.length - 3 : 0;
+  const extraTag = extraProjects ? '<span class="tag">+' + extraProjects + ' more</span>' : '';
 
   return [
-    '      <article class="card">',
+    '      <article class="card" data-dev-index="' + index + '" data-dev-name="' + escapeHtml(dev.name) + '" onclick="openHistory(' + index + ')">',
     '        <h3>' + escapeHtml(dev.name) + '</h3>',
     '        <p class="score">' + avg + '<span class="outof">/10</span></p>',
-    '        <p class="meta">' + dev.checks + (dev.checks === 1 ? ' check' : ' checks') + '</p>',
+    '        ' + renderSparkline(dev.scores),
+    '        <div class="meta-row"><span class="meta-label">' + dev.checks + (dev.checks === 1 ? ' check' : ' checks') + '</span>',
+    '          <span class="meta-label">last: ' + relativeDate(dev.lastCheck) + '</span></div>',
     '        ' + trendBadge(dev.trend),
-    '        ' + issue,
-    '        ' + where,
+    '        <div class="tags">' + issueTag + projectTags + extraTag + '</div>',
     '      </article>',
   ].join('\n');
+}
+
+// Serialized once per developer so the modal can render full history client
+// side without another server round trip — this file is static, opened from
+// disk, so there is no API to call back into.
+function renderHistoryData(devs) {
+  return JSON.stringify(
+    devs.map((d) => ({
+      name: d.name,
+      history: d.history,
+    }))
+  );
 }
 
 function renderIssueRows(entries) {
   const rows = byIssue(entries);
   if (!rows.length) return '        <tr><td colspan="3">Nothing logged yet.</td></tr>';
+  const maxCount = Math.max(...rows.map((r) => r.count));
   return rows
-    .map((row) =>
-      [
+    .map((row) => {
+      const pct = maxCount ? Math.round((row.count / maxCount) * 100) : 0;
+      return [
         '        <tr>',
-        '          <td>' + escapeHtml(shorten(row.label)) + '</td>',
+        '          <td><div class="bar-label">' + escapeHtml(shorten(row.label)) + '</div>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div></td>',
         '          <td class="num">' + row.count + '</td>',
         '          <td class="num">' + row.avg.toFixed(1) + '</td>',
         '        </tr>',
-      ].join('\n')
-    )
+      ].join('\n');
+    })
     .join('\n');
 }
 
 const STYLE = [
   '  :root {',
   '    --ink:#16212E; --paper:#FAFAF7; --card:#FFFFFF; --line:#DDE2DE;',
-  '    --muted:#5A6572; --good:#14795C; --bad:#B4441E;',
+  '    --muted:#5A6572; --good:#14795C; --bad:#B4441E; --accent:#0066CC;',
   '  }',
   '  @media (prefers-color-scheme: dark) {',
   '    :root {',
   '      --ink:#F2F5F3; --paper:#12191F; --card:#1A242E; --line:#2C3A46;',
-  '      --muted:#9AA9B4; --good:#5FCFA8; --bad:#E88A66;',
+  '      --muted:#9AA9B4; --good:#5FCFA8; --bad:#E88A66; --accent:#5EB3FF;',
   '    }',
   '  }',
   '  * { box-sizing:border-box; }',
-  '  body { margin:0; padding:48px 24px; background:var(--paper); color:var(--ink);',
+  '  body { margin:0; padding:24px; background:var(--paper); color:var(--ink);',
   '    font:16px/1.6 "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif; }',
-  '  .wrap { max-width:1000px; margin:0 auto; }',
-  '  h1 { font-size:32px; font-weight:600; margin:0 0 4px; }',
-  '  h2 { font-size:20px; font-weight:600; margin:48px 0 16px; }',
+  '  .wrap { max-width:1200px; margin:0 auto; }',
+  '  h1 { font-size:36px; font-weight:700; margin:0 0 8px; }',
+  '  h2 { font-size:22px; font-weight:600; margin:48px 0 20px; }',
   '  h3 { font-size:18px; font-weight:600; margin:0 0 12px; }',
-  '  .sub { color:var(--muted); margin:0; }',
+  '  .sub { color:var(--muted); margin:0 0 24px; font-size:16px; }',
   '  .warn { color:var(--bad); font-size:14px; margin:12px 0 0; }',
-  '  .totals { display:flex; gap:40px; flex-wrap:wrap; margin-top:28px; padding:24px;',
-  '    background:var(--card); border:1px solid var(--line); border-radius:12px; }',
-  '  .totals div { min-width:120px; }',
-  '  .big { font-size:40px; font-weight:600; line-height:1.1; margin:0; }',
-  '  .lbl { color:var(--muted); font-size:14px; margin:4px 0 0; }',
-  '  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:20px; }',
-  '  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:24px; }',
-  '  .score { font-size:44px; font-weight:600; margin:0; line-height:1.1; }',
-  '  .outof { font-size:20px; color:var(--muted); font-weight:400; }',
+  '  .filters { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }',
+  '  .filter-group { display:flex; gap:8px; flex-wrap:wrap; }',
+  '  .filter-btn { padding:8px 14px; border:1px solid var(--line); background:var(--card);',
+  '    color:var(--ink); border-radius:6px; cursor:pointer; font-size:14px; transition:all 0.2s;',
+  '    font-weight:500; }',
+  '  .filter-btn:hover { border-color:var(--accent); color:var(--accent); }',
+  '  .filter-btn.active { background:var(--accent); color:white; border-color:var(--accent); }',
+  '  .totals { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px;',
+  '    margin-bottom:32px; }',
+  '  .stat-card { background:var(--card); border:1px solid var(--line); border-radius:12px;',
+  '    padding:24px; box-shadow:0 1px 3px rgba(0,0,0,0.08); }',
+  '  .big { font-size:48px; font-weight:700; line-height:1; margin:0; }',
+  '  .lbl { color:var(--muted); font-size:14px; margin:8px 0 0; font-weight:500; }',
+  '  .chart-container { background:var(--card); border:1px solid var(--line); border-radius:12px;',
+  '    padding:24px; margin-bottom:32px; box-shadow:0 1px 3px rgba(0,0,0,0.08); }',
+  '  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:20px; }',
+  '  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:24px;',
+  '    box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:all 0.3s; cursor:pointer; }',
+  '  .card:hover { box-shadow:0 4px 16px rgba(0,0,0,0.12); transform:translateY(-2px); border-color:var(--accent); }',
+  '  .score { font-size:52px; font-weight:700; margin:0; line-height:1; color:var(--accent); }',
+  '  .outof { font-size:18px; color:var(--muted); font-weight:400; }',
   '  .meta { color:var(--muted); font-size:14px; margin:8px 0 0; }',
-  '  .badge { display:inline-block; margin-top:12px; padding:4px 12px; border-radius:999px;',
-  '    font-size:13px; font-weight:500; }',
-  '  .badge.up { background:rgba(20,121,92,0.12); color:var(--good); }',
-  '  .badge.down { background:rgba(180,68,30,0.12); color:var(--bad); }',
-  '  .badge.flat { background:rgba(90,101,114,0.12); color:var(--muted); }',
+  '  .meta-row { display:flex; justify-content:space-between; align-items:center; margin:12px 0; }',
+  '  .meta-label { color:var(--muted); font-size:13px; }',
+  '  .meta-value { font-weight:500; color:var(--ink); }',
+  '  .badge { display:inline-flex; align-items:center; gap:6px; margin-top:12px; padding:6px 12px;',
+  '    border-radius:20px; font-size:13px; font-weight:600; }',
+  '  .badge.up { background:rgba(20,121,92,0.15); color:var(--good); }',
+  '  .badge.down { background:rgba(180,68,30,0.15); color:var(--bad); }',
+  '  .badge.flat { background:rgba(90,101,114,0.15); color:var(--muted); }',
+  '  .trend-icon { font-size:14px; }',
+  '  .tags { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }',
+  '  .tag { display:inline-block; padding:5px 10px; background:var(--accent); color:white;',
+  '    border-radius:16px; font-size:12px; font-weight:500; white-space:nowrap; }',
+  '  .gap-tag { background:rgba(180,68,30,0.1); color:var(--bad); }',
+  '  .sparkline { width:100%; height:40px; margin-top:12px; }',
   '  table { width:100%; border-collapse:collapse; background:var(--card);',
-  '    border:1px solid var(--line); border-radius:12px; overflow:hidden; }',
-  '  th, td { padding:12px 16px; text-align:left; border-bottom:1px solid var(--line); font-size:15px; }',
-  '  th { font-weight:600; }',
+  '    border:1px solid var(--line); border-radius:12px; overflow:hidden;',
+  '    box-shadow:0 1px 3px rgba(0,0,0,0.08); }',
+  '  th, td { padding:14px 16px; text-align:left; border-bottom:1px solid var(--line); font-size:15px; }',
+  '  th { font-weight:600; background:rgba(0,0,0,0.02); }',
   '  tr:last-child td { border-bottom:none; }',
+  '  tr:hover { background:rgba(0,0,0,0.02); }',
   '  .num { text-align:right; font-variant-numeric:tabular-nums; }',
-  '  footer { margin-top:48px; color:var(--muted); font-size:13px; }',
+  '  .bar-label { font-weight:500; margin-bottom:6px; }',
+  '  .bar-track { width:100%; height:6px; background:var(--line); border-radius:3px; overflow:hidden; }',
+  '  .bar-fill { height:100%; background:var(--accent); border-radius:3px; }',
+  '  .modal { display:none; position:fixed; top:0; left:0; right:0; bottom:0;',
+  '    background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; }',
+  '  .modal.show { display:flex; }',
+  '  .modal-content { background:var(--card); border-radius:12px; padding:32px; max-height:80vh;',
+  '    overflow-y:auto; max-width:600px; width:90%; }',
+  '  .modal-close { float:right; font-size:24px; cursor:pointer; color:var(--muted); }',
+  '  .modal-close:hover { color:var(--ink); }',
+  '  .history-item { padding:12px 0; border-bottom:1px solid var(--line); font-size:14px; }',
+  '  .history-item:last-child { border:none; }',
+  '  footer { margin-top:48px; padding-top:24px; border-top:1px solid var(--line);',
+  '    color:var(--muted); font-size:13px; }',
+  '  @media (max-width:768px) {',
+  '    body { padding:16px; }',
+  '    h1 { font-size:28px; }',
+  '    .totals { grid-template-columns:1fr; }',
+  '    .grid { grid-template-columns:1fr; }',
+  '    .card { padding:16px; }',
+  '    .score { font-size:40px; }',
+  '    .filters { flex-direction:column; }',
+  '    .filter-btn { width:100%; }',
+  '  }',
 ].join('\n');
 
 // options.autoRefreshSeconds is only used when the page is served live, where a
@@ -213,11 +334,11 @@ function renderHtml(entries, options = {}) {
     thin,
     '',
     '  <div class="totals">',
-    '    <div><p class="big">' + entries.length + '</p><p class="lbl">checks logged</p></div>',
-    '    <div><p class="big">' +
+    '    <div class="stat-card"><p class="big">' + entries.length + '</p><p class="lbl">checks logged</p></div>',
+    '    <div class="stat-card"><p class="big">' +
       (teamAvg === null ? '&mdash;' : teamAvg.toFixed(1)) +
       '</p><p class="lbl">team average</p></div>',
-    '    <div><p class="big">' +
+    '    <div class="stat-card"><p class="big">' +
       devs.length +
       '</p><p class="lbl">' +
       (devs.length === 1 ? 'developer' : 'developers') +
@@ -225,8 +346,29 @@ function renderHtml(entries, options = {}) {
     '  </div>',
     '',
     '  <h2>Per developer</h2>',
-    '  <div class="grid">',
-    devs.map(renderDeveloperCard).join('\n'),
+    devs.length > 1
+      ? [
+          '  <div class="filters">',
+          '    <div class="filter-group" id="dev-filters">',
+          '      <button class="filter-btn active" data-filter="all" onclick="filterDevs(\'all\')">All</button>',
+          devs
+            .map(
+              (d) =>
+                '      <button class="filter-btn" data-filter="' +
+                escapeHtml(d.name) +
+                '" onclick="filterDevs(\'' +
+                escapeHtml(d.name).replace(/'/g, "\\'") +
+                '\')">' +
+                escapeHtml(d.name) +
+                '</button>'
+            )
+            .join('\n'),
+          '    </div>',
+          '  </div>',
+        ].join('\n')
+      : '',
+    '  <div class="grid" id="dev-grid">',
+    devs.map((d, i) => renderDeveloperCard(d, i)).join('\n'),
     '  </div>',
     '',
     '  <h2>Which gap costs the most</h2>',
@@ -243,6 +385,45 @@ function renderHtml(entries, options = {}) {
       ' by scripts/dashboard.js. Prompt text is never logged &mdash; only its length and a SHA-256 hash.',
     '  </footer>',
     '</div>',
+    '',
+    '<div class="modal" id="history-modal" onclick="if(event.target===this)closeHistory()">',
+    '  <div class="modal-content">',
+    '    <span class="modal-close" onclick="closeHistory()">&times;</span>',
+    '    <h3 id="modal-title"></h3>',
+    '    <div id="modal-body"></div>',
+    '  </div>',
+    '</div>',
+    '',
+    '<script>',
+    'var HISTORY_DATA = ' + renderHistoryData(devs) + ';',
+    'function filterDevs(name) {',
+    '  document.querySelectorAll("#dev-filters .filter-btn").forEach(function(b) {',
+    '    b.classList.toggle("active", b.getAttribute("data-filter") === name);',
+    '  });',
+    '  document.querySelectorAll("#dev-grid .card").forEach(function(c) {',
+    '    var match = name === "all" || c.getAttribute("data-dev-name") === name;',
+    '    c.style.display = match ? "" : "none";',
+    '  });',
+    '}',
+    'function openHistory(index) {',
+    '  var dev = HISTORY_DATA[index];',
+    '  if (!dev) return;',
+    '  document.getElementById("modal-title").textContent = dev.name + " \\u2014 check history";',
+    '  var body = dev.history.slice(0, 20).map(function(h) {',
+    '    var date = new Date(h.timestamp).toLocaleString();',
+    '    var score = h.score === null || h.score === undefined ? "\\u2014" : h.score;',
+    '    var issues = h.issues.length ? h.issues.join(", ") : "no issues";',
+    '    var proj = h.project ? " \\u00b7 " + h.project : "";',
+    '    return "<div class=\\"history-item\\"><strong>" + score + "/10</strong> \\u2014 " + date + proj + "<br><span style=\\"color:var(--muted);font-size:13px\\">" + issues + "</span></div>";',
+    '  }).join("");',
+    '  document.getElementById("modal-body").innerHTML = body || "<p>No history recorded.</p>";',
+    '  document.getElementById("history-modal").classList.add("show");',
+    '}',
+    'function closeHistory() {',
+    '  document.getElementById("history-modal").classList.remove("show");',
+    '}',
+    'document.addEventListener("keydown", function(e) { if (e.key === "Escape") closeHistory(); });',
+    '</script>',
     '</body>',
     '</html>',
     '',
