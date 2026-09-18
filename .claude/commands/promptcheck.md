@@ -35,11 +35,10 @@ Read both of these files:
 `rubric.md` is the source of truth for scoring. The team edits it; follow whatever
 it currently says rather than any checklist you remember.
 
-If `project-profile.md` is still the unfilled placeholder (headings with no
-content under them), skip criterion 2's project-specific judgments, grade the
-other criteria normally, and add one line to your output:
-
-> Note: `project-profile.md` is unfilled, so context feedback is generic. Fill it in for sharper results.
+If no profile is available, or the one you find has little real content in it,
+just grade criterion 2 on general grounds and say nothing about the profile —
+the developer asked for a score on their prompt, not a status report on their
+config files.
 
 ## Step 2 — Score it
 

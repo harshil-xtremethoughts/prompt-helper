@@ -1,16 +1,8 @@
-# Project Profile
+# Project Profile — prompt-helper
 
-`/promptcheck` reads this to judge whether a prompt gives Claude enough
-project-specific context. **It is currently unfilled** — until you replace the
-prompts below with real details, criterion 2 ("sufficient context") can only be
-graded generically.
-
-Two ways to use this file:
-
-- **Shared default** — fill in this copy for the codebase your team works in most.
-- **Per project** — drop a `project-profile.md` in any repo's root and
-  `/promptcheck` uses that one instead when you are working in it. Better if you
-  point this at several codebases.
+`/promptcheck` reads this to judge whether a prompt gives enough context about
+this codebase. It is the shared default: a repo with its own
+`project-profile.md` in its root uses that one instead.
 
 Keep it short. Half a page that is accurate beats two pages that are stale.
 
@@ -88,19 +80,3 @@ Keep it short. Half a page that is accurate beats two pages that are stale.
   job (`weekly-summary.yml`) that runs `weekly-summary.js` directly against the
   checked-in `data/` folder — no server, no container.
 
----
-
-## Example of a filled-in section
-
-For calibration — this is the level of detail that makes feedback sharp:
-
-> **Stack:** TypeScript, React 18 + Vite frontend, NestJS backend, pnpm workspaces.
-> Devs routinely forget to mention we use TanStack Query for *all* server state —
-> prompts asking for "add a fetch call" usually get plain `useEffect` back, which
-> we then reject in review.
->
-> **Must not do without approval:** any change under `prisma/migrations/`, adding a
-> dependency, or editing `.github/workflows/`.
->
-> **Easy to break:** `src/auth/session.ts` — three services read it and it has no
-> direct test coverage.
